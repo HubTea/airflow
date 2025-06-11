@@ -20,7 +20,7 @@ create table company (
 
     newly_crossed_debt_equity_ratio_threshold boolean not null, -- 이번 분기에 기준치를 하회했는지?
     newly_crossed_return_on_equity_threshold boolean not null, -- 이번 분기에 기준치를 상회했는지?
-    newly_crossed_highest_dividend_yield boolean not null, -- 이번 분기에 기준치를 상회했는지?
+    newly_crossed_highest_dividend_yield boolean not null -- 이번 분기에 기준치를 상회했는지?
 );
 
 create index debt_equity_ratio on company (debt_equity_ratio);
