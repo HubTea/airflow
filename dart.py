@@ -65,12 +65,11 @@ def raw_dart():
             connection = hook.get_conn()
             cursor = connection.cursor()
             cursor.execute(
-                'insert into raw_company(id, year, quarter, financial, dividend) values (%s, %s, %s, %s, %s)', 
+                'insert into raw_company(id, year, quarter, financial, dividend) values (%s, %s, %s, %s, %s) on conflict do nothing', 
                 (company_code, business_year, quarter, financial_response.text, dividend_response.text)
             )
             connection.commit()
             print('db end')
-
     is_new_quarter() >> begin()
 
 raw_dart()
