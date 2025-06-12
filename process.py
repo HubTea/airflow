@@ -87,7 +87,7 @@ def process():
         return map(lambda x: Report(x[0], x[1], x[2], json.load(x[3]), json.load(x[4])), record_list)
 
     @task()
-    def transform(report_list: list[Report]):
+    def transformAndLoad(report_list: list[Report]):
         for report in report_list:
             debt_equity_ratio: float
             return_on_equity: float
@@ -101,7 +101,7 @@ def process():
             operating_income: int
             net_income: int
 
-            highest_devidend_type: StockType
+            highest_dividend_type: StockType
             common_stock_yield: float
             preferred_stock_yield: float
 
@@ -142,19 +142,61 @@ def process():
                     preferred_stock_yield = float(entry.thstrm)
                     previous_preferred_stock_yield = float(entry.frmtrm)
 
-                    if preferred_stock_yield > previous_common_stock_yield:
+                    if preferred_stock_yield > previous_preferred_stock_yield:
                         newly_crossed_highest_dividend_yield = True
 
             if common_stock_yield > preferred_stock_yield:
-                highest_devidend_type = 'common'
+                highest_dividend_type = 'common'
                 highest_dividend_yield = common_stock_yield
             else:
-                highest_devidend_type = 'preferred'
+                highest_dividend_type = 'preferred'
                 highest_dividend_yield = preferred_stock_yield
             
+            connection = hook.get_conn()
+            cursor = connection.cursor()
+            cursor.execute(
+                '''insert into company(
+                    id, 
+                    debt_equity_ratio, 
+                    return_on_equity, 
+                    highest_dividend_yield,
+                    name,
+                    liabilities,
+                    equity,
+                    assets,
+                    revenue,
+                    operating_income,
+                    net_income,
+                    highest_dividend_type, 
+                    common_stock_yield,
+                    preferred_stock_yield,
+                    newly_crossed_debt_equity_ratio_threshold,
+                    newly_crossed_return_on_equity_threshold,
+                    newly_crossed_highest_dividend_yield
+                ) values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) on conflict do nothing''', 
+                (
+                    report.comany_id,
+                    debt_equity_ratio, 
+                    return_on_equity, 
+                    highest_dividend_yield,
+                    name,
+                    liabilities,
+                    equity,
+                    assets,
+                    revenue,
+                    operating_income,
+                    net_income,
+                    highest_dividend_type, 
+                    common_stock_yield,
+                    preferred_stock_yield,
+                    newly_crossed_debt_equity_ratio_threshold,
+                    newly_crossed_return_on_equity_threshold,
+                    newly_crossed_highest_dividend_yield,
+                )
+            )
+            connection.commit()
 
-
-
-    extract()
+    data = extract()
+    transformAndLoad(data)
 
 process()
