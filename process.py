@@ -42,18 +42,30 @@ class Dividend:
     list: list[DividendEntry]
 
 class Report:
-    comany_id: str
+    company_id: str
     year: int
     quarter: int
     financial: Financial
     dividend: Dividend
 
-    def __init__(self, company_id: str, year: int, quarter: int, financial: Financial, dividend: Dividend):
-        self.comany_id = company_id,
+    def __init__(self, company_id=None, year=None, quarter=None, financial=None, dividend=None):
+        self.company_id = company_id,
         self.year = year,
         self.quarter = quarter,
         self.financial = financial,
         self.dividend = dividend,
+
+    @staticmethod
+    def fromMap(m):
+        r = Report()
+        r.company_id = m['company_id']
+        r.year = m['year']
+        r.quarter = m['quarter']
+        r.financial = m['financial']
+        r.dividend = m['dividend']
+        return r
+        
+    
 
 def get_previous_quarter(datetime: DateTime) -> Quarter:
     if datetime.month in range(1, 4):
@@ -75,7 +87,7 @@ def process():
     def extract(data_interval_start: DateTime):
         '''가장 최근 분기의 회사 정보를 추출'''
         quarter: Quarter = get_previous_quarter(data_interval_start)
-
+        
         connection = hook.get_conn()
         cursor = connection.cursor()
         cursor.execute(
@@ -84,11 +96,25 @@ def process():
         )
         record_list = cursor.fetchmany()
         connection.commit()
-        return map(lambda x: Report(x[0], x[1], x[2], json.load(x[3]), json.load(x[4])), record_list)
+
+        report_list: list[Report] = []
+        for record in record_list:
+            a = {
+                'company_id': record[0], 
+                'year': record[1], 
+                'quarter': record[2], 
+                'financial': json.loads(record[3]), 
+                'dividend': json.loads(record[4])
+            }
+            report_list.append(a)
+        return report_list
 
     @task()
-    def transformAndLoad(report_list: list[Report]):
-        for report in report_list:
+    def transformAndLoad(dict_list: list[dict]):
+        #report_list = list(map(Report.fromMap, dict_list))
+        #print(report_list)
+
+        for d in dict_list:
             debt_equity_ratio: float
             return_on_equity: float
             highest_dividend_yield: float
@@ -105,42 +131,43 @@ def process():
             common_stock_yield: float
             preferred_stock_yield: float
 
-            newly_crossed_debt_equity_ratio_threshold: bool
-            newly_crossed_return_on_equity_threshold: bool
+            #newly_crossed_debt_equity_ratio_threshold: bool
+            #newly_crossed_return_on_equity_threshold: bool
             newly_crossed_highest_dividend_yield: bool
 
-            for entry in report.financial.list:
-                if entry.account_nm == '부채총계':
-                    liabilities = int(entry.thstrm_amount)
-                elif entry.account_nm == '자본총계':
-                    equity = int(entry.thstrm_amount)
-                elif entry.account_nm == '자산총계':
-                    assets = int(entry.thstrm_amount)
-                elif entry.account_nm == '매출액':
-                    revenue = int(entry.thstrm_amount)
-                elif entry.account_nm == '영업이익':
-                    operating_income = int(entry.thstrm_amount)
-                elif entry.account_nm == '당기순이익':
-                    net_income = int(entry.thstrm_amount)
+            print(d['financial'])
+            for entry in d['financial']['list']:
+                if entry['account_nm'] == '부채총계':
+                    liabilities = int(entry['thstrm_amount'].replace(',', ''))
+                elif entry['account_nm'] == '자본총계':
+                    equity = int(entry['thstrm_amount'].replace(',', ''))
+                elif entry['account_nm'] == '자산총계':
+                    assets = int(entry['thstrm_amount'].replace(',', ''))
+                elif entry['account_nm'] == '매출액':
+                    revenue = int(entry['thstrm_amount'].replace(',', ''))
+                elif entry['account_nm'] == '영업이익':
+                    operating_income = int(entry['thstrm_amount'].replace(',', ''))
+                elif entry['account_nm'] == '당기순이익':
+                    net_income = int(entry['thstrm_amount'].replace(',', ''))
 
             debt_equity_ratio = liabilities / equity
             return_on_equity = net_income / equity
-            name = report.dividend.list[0].corp_name
+            name = d['dividend']['list'][0]['corp_name']
             
-            for entry in report.dividend.list:
-                if entry.se != '현금배당수익률(%)':
+            for entry in d['dividend']['list']:
+                if entry['se'] != '현금배당수익률(%)':
                     continue
                 
-                if entry.stock_knd == '보통주':
-                    common_stock_yield = float(entry.thstrm)
-                    previous_common_stock_yield = float(entry.frmtrm)
+                if entry['stock_knd'] == '보통주':
+                    common_stock_yield = float(entry['thstrm'])
+                    previous_common_stock_yield = float(entry['frmtrm'])
 
                     if common_stock_yield > previous_common_stock_yield:
                         newly_crossed_highest_dividend_yield = True
 
-                elif entry.stock_knd == '우선주':
-                    preferred_stock_yield = float(entry.thstrm)
-                    previous_preferred_stock_yield = float(entry.frmtrm)
+                elif entry['stock_knd'] == '우선주':
+                    preferred_stock_yield = float(entry['thstrm'])
+                    previous_preferred_stock_yield = float(entry['frmtrm'])
 
                     if preferred_stock_yield > previous_preferred_stock_yield:
                         newly_crossed_highest_dividend_yield = True
@@ -175,7 +202,7 @@ def process():
                     newly_crossed_highest_dividend_yield
                 ) values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) on conflict do nothing''', 
                 (
-                    report.comany_id,
+                    d['company_id'],
                     debt_equity_ratio, 
                     return_on_equity, 
                     highest_dividend_yield,
@@ -189,9 +216,9 @@ def process():
                     highest_dividend_type, 
                     common_stock_yield,
                     preferred_stock_yield,
-                    newly_crossed_debt_equity_ratio_threshold,
-                    newly_crossed_return_on_equity_threshold,
-                    newly_crossed_highest_dividend_yield,
+                    False,#newly_crossed_debt_equity_ratio_threshold,
+                    False, #newly_crossed_return_on_equity_threshold,
+                    False, #newly_crossed_highest_dividend_yield,
                 )
             )
             connection.commit()
